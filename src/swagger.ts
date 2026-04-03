@@ -104,6 +104,24 @@ const options: swaggerJSDoc.Options = {
             description: { type: "string" },
           },
         },
+        AuditLog: {
+          type: "object",
+          properties: {
+            id: { type: "string", format: "uuid" },
+            user_id: { type: "string", format: "uuid" },
+            action: { type: "string", enum: ["CREATE", "UPDATE", "DELETE", "LOGIN", "EXPORT"] },
+            entity_type: { type: "string" },
+            entity_id: { type: ["string", "null"] },
+            old_values: { type: ["object", "null"], additionalProperties: true },
+            new_values: { type: ["object", "null"], additionalProperties: true },
+            changes_summary: { type: ["string", "null"] },
+            ip_address: { type: ["string", "null"] },
+            user_agent: { type: ["string", "null"] },
+            status: { type: "string", enum: ["success", "failure"] },
+            error_message: { type: ["string", "null"] },
+            timestamp: { type: "string", format: "date-time" },
+          },
+        },
       },
     },
     paths: {
@@ -283,6 +301,88 @@ const options: swaggerJSDoc.Options = {
           tags: ["Summary"],
           security: [{ BearerAuth: [] }],
           responses: { "200": { description: "Aggregated analytics insights" } },
+        },
+      },
+      "/summary/anomalies": {
+        get: {
+          summary: "Detect spending anomalies",
+          tags: ["Summary"],
+          security: [{ BearerAuth: [] }],
+          responses: {
+            "200": {
+              description: "Anomaly detection result",
+            },
+          },
+        },
+      },
+      "/audit-logs": {
+        get: {
+          summary: "List audit logs (admin)",
+          tags: ["Audit Logs"],
+          security: [{ BearerAuth: [] }],
+          parameters: [
+            { in: "query", name: "limit", schema: { type: "integer", default: 50, minimum: 1, maximum: 100 } },
+            { in: "query", name: "offset", schema: { type: "integer", default: 0, minimum: 0 } },
+            { in: "query", name: "action", schema: { type: "string", enum: ["CREATE", "UPDATE", "DELETE", "LOGIN", "EXPORT"] } },
+            { in: "query", name: "entity_type", schema: { type: "string" } },
+            { in: "query", name: "user_id", schema: { type: "string", format: "uuid" } },
+            { in: "query", name: "from_date", schema: { type: "string", format: "date" } },
+            { in: "query", name: "to_date", schema: { type: "string", format: "date" } },
+          ],
+          responses: {
+            "200": {
+              description: "Paginated audit logs",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      total: { type: "integer" },
+                      limit: { type: "integer" },
+                      offset: { type: "integer" },
+                      data: {
+                        type: "array",
+                        items: { $ref: "#/components/schemas/AuditLog" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            "403": { description: "Forbidden" },
+          },
+        },
+      },
+      "/audit-logs/entity/{entityType}/{entityId}": {
+        get: {
+          summary: "Get audit trail for an entity (admin)",
+          tags: ["Audit Logs"],
+          security: [{ BearerAuth: [] }],
+          parameters: [
+            { in: "path", name: "entityType", required: true, schema: { type: "string" } },
+            { in: "path", name: "entityId", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            "200": {
+              description: "Entity audit trail",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      entityType: { type: "string" },
+                      entityId: { type: "string" },
+                      trail: {
+                        type: "array",
+                        items: { $ref: "#/components/schemas/AuditLog" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            "403": { description: "Forbidden" },
+          },
         },
       },
     },
