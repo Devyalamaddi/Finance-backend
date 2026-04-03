@@ -4,7 +4,11 @@ import { db } from "./db";
 import { redis } from "./redis";
 
 async function bootstrap(): Promise<void> {
-  await db.query("SELECT 1");
+  try {
+    await db.query("SELECT 1");
+  } catch (err) {
+    console.warn("Database unavailable at startup, continuing to boot server", err);
+  }
 
   if (redis) {
     try {
