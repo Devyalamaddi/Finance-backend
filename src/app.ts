@@ -7,8 +7,10 @@ import authRoutes from "./routes/auth";
 import usersRoutes from "./routes/users";
 import recordsRoutes from "./routes/records";
 import summaryRoutes from "./routes/summary";
+import auditLogsRoutes from "./routes/auditLogs";
 import { errorHandler, notFound } from "./middlewares/errorHandler";
 import { rateLimit } from "./middlewares/rateLimit";
+import { auditContextMiddleware } from "./middlewares/auditLog";
 import { swaggerSpec } from "./swagger";
 
 const app = express();
@@ -18,6 +20,7 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan("dev"));
 app.use(rateLimit);
+app.use(auditContextMiddleware);
 
 app.get("/healthz", (_req, res) => {
   res.json({ status: "ok" });
@@ -29,6 +32,7 @@ app.use("/auth", authRoutes);
 app.use("/users", usersRoutes);
 app.use("/records", recordsRoutes);
 app.use("/summary", summaryRoutes);
+app.use("/audit-logs", auditLogsRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

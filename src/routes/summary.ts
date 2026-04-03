@@ -3,10 +3,14 @@ import { authRequired, requireRoles } from "../middlewares/auth";
 import { query } from "../db";
 import { recentQuerySchema, trendsQuerySchema } from "../schemas";
 import { addRecordScopeForNonAdmin } from "../services/recordAccess";
+import { detectAnomalies } from "../utils/financialOps";
 
 const router = Router();
 router.use(authRequired, requireRoles("viewer", "analyst", "admin"));
 
+
+ //Get summary totals: income, expense, net balance.
+ 
 router.get("/total", async (req, res) => {
   const where: string[] = ["deleted_at IS NULL"];
   const values: unknown[] = [];
@@ -33,6 +37,9 @@ router.get("/total", async (req, res) => {
   });
 });
 
+
+ //Get category-wise breakdown of expenses and income.
+ 
 router.get("/category", async (req, res) => {
   const where: string[] = ["deleted_at IS NULL"];
   const values: unknown[] = [];
@@ -50,6 +57,9 @@ router.get("/category", async (req, res) => {
   res.json(rows.map((r) => ({ category: r.category, totalAmount: r.total_amount })));
 });
 
+
+ //Get recent transactions.
+ 
 router.get("/recent", async (req, res) => {
   const q = recentQuerySchema.parse(req.query);
 
@@ -59,7 +69,7 @@ router.get("/recent", async (req, res) => {
   values.push(q.limit);
 
   const rows = await query(
-    `SELECT id, user_id, amount, type, category, date, description, created_at, updated_at
+    `SELECT id, transaction_id, user_id, amount, type, category, date, description, created_at, updated_at
      FROM records
      WHERE ${where.join(" AND ")}
      ORDER BY date DESC, created_at DESC
@@ -69,6 +79,10 @@ router.get("/recent", async (req, res) => {
   res.json(rows);
 });
 
+
+ //Get trends over time.
+ //USP: Analytics-first design shows real insights, not just raw data.
+ 
 router.get("/trends", async (req, res) => {
   const q = trendsQuerySchema.parse(req.query);
   const interval = q.interval === "weekly" ? "week" : "month";
@@ -109,6 +123,10 @@ router.get("/trends", async (req, res) => {
   })));
 });
 
+
+ //Get comprehensive analytics including month-over-month comparison.
+ //USP: Aggregated insights enable AI/forecasting capabilities.
+ 
 router.get("/analytics", async (req, res) => {
   const where: string[] = ["r.deleted_at IS NULL"];
   const values: unknown[] = [];
@@ -203,6 +221,61 @@ router.get("/analytics", async (req, res) => {
         percentage: m.net_change_percentage,
       },
     },
+  });
+});
+
+
+ //Detect anomalies in spending patterns.
+ //USP: Simple rule-based anomaly detection shows AI/ML readiness.
+ //Future: Can be replaced with ML models for more sophisticated detection.
+ 
+router.get("/anomalies", async (req, res) => {
+  const where: string[] = ["deleted_at IS NULL"];
+  const values: unknown[] = [];
+  addRecordScopeForNonAdmin(where, values, req.user!);
+
+  // Get recent transactions (last 30 days)
+  values.push("30 days");
+  const recentRecords = await query<{
+    id: string;
+    amount: string;
+    type: string;
+    category: string;
+  }>(
+    `SELECT id, amount::numeric, type, category
+     FROM records
+     WHERE ${where.join(" AND ")} AND date >= CURRENT_DATE - INTERVAL $${values.length}
+     ORDER BY date DESC`,
+    values,
+  );
+
+  // Get historical average (last 90 days before recent 30)
+  const historicalRows = await query<{ avg_expense: string }>(
+    `SELECT COALESCE(AVG(amount), 0)::text AS avg_expense
+     FROM records
+     WHERE ${where.join(" AND ")} 
+     AND type = 'expense'
+     AND date >= CURRENT_DATE - INTERVAL '120 days'
+     AND date < CURRENT_DATE - INTERVAL '30 days'`,
+    values.slice(0, values.length - 1),
+  );
+
+  const historicalAverage = historicalRows[0] ? parseFloat(historicalRows[0].avg_expense) : 0;
+
+  // Transform records to correct type
+  const transactions = recentRecords.map((r) => ({
+    amount: parseFloat(r.amount),
+    type: r.type,
+    category: r.category,
+  }));
+
+  const anomalyDetection = detectAnomalies(transactions, historicalAverage);
+
+  res.json({
+    hasAnomalies: anomalyDetection.isAnomaly,
+    ...anomalyDetection,
+    recentTransactionCount: recentRecords.length,
+    historicalAverageExpense: historicalAverage.toFixed(2),
   });
 });
 
